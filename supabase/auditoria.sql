@@ -27,6 +27,6 @@ create policy "Gravacao protegida pela rotina automatica"
   on public.auditorias_sistema for insert
   to anon, authenticated
   with check (
-    coalesce(current_setting('request.headers', true)::jsonb ->> 'x-audit-write-token', '')
+    coalesce((select current_setting('request.headers', true))::jsonb ->> 'x-audit-write-token', '')
       = '__AUDIT_WRITE_TOKEN__'
   );
