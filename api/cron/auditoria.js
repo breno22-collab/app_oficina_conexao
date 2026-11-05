@@ -10,9 +10,9 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
 
 const normalizeName = (value) => value
   .normalize('NFD')
-  .replace(/[\\u0300-\\u036f]/g, '')
+  .replace(/[\u0300-\u036f]/g, '')
   .trim()
-  .replace(/\\s+/g, ' ')
+  .replace(/\s+/g, ' ')
   .toLocaleLowerCase('pt-BR');
 
 export async function GET(request) {
