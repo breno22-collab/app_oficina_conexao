@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowDownToLine,
   Check,
+  ClipboardCheck,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -22,6 +23,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase.js';
 const navigation = [
   { id: 'inicio', label: 'Visão geral', icon: Home },
   { id: 'nomes', label: 'Nomes cadastrados', icon: Users },
+  { id: 'auditorias', label: 'Auditoria do sistema', icon: ClipboardCheck },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ];
 
@@ -34,6 +36,9 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [auditorias, setAuditorias] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
 
   const loadNames = useCallback(async () => {
     if (!supabase) return;
@@ -52,9 +57,28 @@ function App() {
     setLoading(false);
   }, []);
 
+  const loadAudits = useCallback(async () => {
+    if (!supabase) return;
+    setAuditLoading(true);
+    setAuditError('');
+    const { data, error: queryError } = await supabase
+      .from('auditorias_sistema')
+      .select('id, executed_at, status, total_records, checked_records, findings, duration_ms')
+      .order('executed_at', { ascending: false })
+      .limit(12);
+
+    if (queryError) {
+      setAuditError('Não foi possível consultar o histórico de auditorias.');
+    } else {
+      setAuditorias(data ?? []);
+    }
+    setAuditLoading(false);
+  }, []);
+
   useEffect(() => {
     loadNames();
-  }, [loadNames]);
+    loadAudits();
+  }, [loadNames, loadAudits]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -210,6 +234,22 @@ function App() {
             </>
           )}
 
+          {activePage === 'auditorias' && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">MONITORAMENTO AUTOMÁTICO</div>
+                  <h1>Auditoria do sistema</h1>
+                  <p>Verificação semanal da conexão, da tabela e da consistência dos cadastros.</p>
+                </div>
+                <button className="secondary-button" onClick={loadAudits} disabled={auditLoading}>
+                  <RefreshCw size={16} className={auditLoading ? 'spin' : ''} /> Atualizar
+                </button>
+              </div>
+              <AuditPanel auditorias={auditorias} loading={auditLoading} error={auditError} />
+            </>
+          )}
+
           {activePage === 'configuracoes' && (
             <>
               <div className="page-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configurações</h1><p>Informações técnicas do ambiente de teste.</p></div></div>
@@ -217,6 +257,7 @@ function App() {
                 <div className="setting-row"><div className="setting-icon"><Database size={19} /></div><div className="setting-copy"><strong>Supabase</strong><span>Conexão com banco de dados</span></div><span className={`setting-state ${isSupabaseConfigured ? 'ok' : ''}`}>{isSupabaseConfigured ? 'Configurado' : 'Pendente'}</span></div>
                 <div className="setting-row"><div className="setting-icon"><Activity size={19} /></div><div className="setting-copy"><strong>React</strong><span>Interface da aplicação</span></div><span className="setting-state ok">Ativo</span></div>
                 <div className="setting-row"><div className="setting-icon"><Wrench size={19} /></div><div className="setting-copy"><strong>Projeto</strong><span>Oficina Conexão — ambiente de teste</span></div><span className="setting-state ok">Inicializado</span></div>
+                <div className="setting-row"><div className="setting-icon"><ClipboardCheck size={19} /></div><div className="setting-copy"><strong>Auditoria automática</strong><span>Segundas-feiras, às 08h (horário de Porto Velho)</span></div><span className="setting-state ok">Semanal</span></div>
               </section>
             </>
           )}
@@ -225,7 +266,7 @@ function App() {
         <footer className="bottom-nav" aria-label="Navegação inferior">
           {navigation.map(({ id, label, icon: Icon }) => (
             <button key={id} className={activePage === id ? 'bottom-item active' : 'bottom-item'} onClick={() => navigate(id)}>
-              <Icon size={19} /><span>{id === 'inicio' ? 'Início' : id === 'nomes' ? 'Nomes' : 'Ajustes'}</span>
+              <Icon size={19} /><span>{id === 'inicio' ? 'Início' : id === 'nomes' ? 'Nomes' : id === 'configuracoes' ? 'Ajustes' : 'Auditoria'}</span>
             </button>
           ))}
         </footer>
@@ -252,6 +293,70 @@ function NamesPanel({ nomes, loading, onRefresh }) {
         <div className="table-wrap"><table><thead><tr><th>Nome</th><th>Data de cadastro</th></tr></thead><tbody>{nomes.map((item) => <tr key={item.id}><td><span className="name-avatar">{item.nome.slice(0, 1).toUpperCase()}</span>{item.nome}</td><td>{new Date(item.created_at).toLocaleString('pt-BR')}</td></tr>)}</tbody></table></div>
       )}
     </section>
+  );
+}
+
+function AuditPanel({ auditorias, loading, error }) {
+  const statusLabel = (status) => (
+    status === 'ok' ? 'Sem inconsistências' : status === 'warning' ? 'Atenção necessária' : 'Falha na verificação'
+  );
+  const statusClass = (status) => status === 'ok' ? 'audit-ok' : status === 'warning' ? 'audit-warning' : 'audit-error';
+
+  return (
+    <>
+      <section className="panel audit-intro">
+        <div className="audit-intro-icon"><ClipboardCheck size={22} /></div>
+        <div>
+          <strong>Rotina semanal ativada</strong>
+          <p>A aplicação executa a auditoria toda segunda-feira às 08h, no horário de Porto Velho. A primeira execução ocorrerá no próximo ciclo agendado após a publicação.</p>
+        </div>
+      </section>
+
+      <section className="panel names-panel">
+        <div className="panel-heading compact">
+          <div><div className="eyebrow">RESULTADOS RECENTES</div><h2>Histórico de auditorias</h2></div>
+          <span className="audit-frequency">1 vez por semana</span>
+        </div>
+        {error ? (
+          <div className="empty-state"><div className="empty-icon"><Database size={23} /></div><strong>Histórico indisponível</strong><p>{error}</p></div>
+        ) : loading ? (
+          <div className="empty-state"><RefreshCw size={22} className="spin" /><p>Consultando auditorias...</p></div>
+        ) : auditorias.length === 0 ? (
+          <div className="empty-state"><div className="empty-icon"><ClipboardCheck size={23} /></div><strong>Ainda não há auditorias registradas</strong><p>A primeira verificação será registrada automaticamente na próxima segunda-feira, às 08h.</p></div>
+        ) : (
+          <div className="audit-list">
+            {auditorias.map((audit) => (
+              <article className="audit-entry" key={audit.id}>
+                <div className="audit-entry-top">
+                  <div>
+                    <strong>{new Date(audit.executed_at).toLocaleString('pt-BR')}</strong>
+                    <span>{audit.checked_records} registro(s) verificado(s)</span>
+                  </div>
+                  <span className={`audit-status ${statusClass(audit.status)}`}>{statusLabel(audit.status)}</span>
+                </div>
+                {Array.isArray(audit.findings) && audit.findings.length > 0 ? (
+                  <ul className="audit-findings">
+                    {audit.findings.map((finding, index) => (
+                      <li key={finding.code || index}>
+                        <span className={`finding-severity ${finding.severity === 'critical' ? 'critical' : 'warning'}`} />
+                        <span>{finding.message}</span>
+                        {finding.count > 0 && <b>{finding.count}</b>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="audit-clean"><Check size={15} /> Nenhuma inconsistência encontrada.</p>
+                )}
+                <div className="audit-meta">
+                  <span>{audit.total_records} registro(s) no total</span>
+                  <span>{audit.duration_ms} ms</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
